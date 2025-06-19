@@ -194,6 +194,11 @@ Réponds UNIQUEMENT avec l'une de ces émotions (en français):
       return false;
     }
 
+    // Temporairement désactivé pour éviter les erreurs 429
+    console.log('✅ Mistral AI configuré (vérification désactivée)');
+    return true;
+    
+    /*
     try {
       const response = await fetch(MISTRAL_CONFIG.URL, {
         method: 'POST',
@@ -221,6 +226,7 @@ Réponds UNIQUEMENT avec l'une de ces émotions (en français):
       console.error('❌ API Mistral non disponible:', error);
       return false;
     }
+    */
   }
 }
 

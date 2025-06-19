@@ -87,6 +87,7 @@ const DreamRecorder: React.FC = () => {
       const transcriptionResponse = await dreamService.transcribeAudio(file);
       
       if (transcriptionResponse.success) {
+        console.log('📝 Transcription reçue:', transcriptionResponse.data.transcription);
         setTranscription(transcriptionResponse.data.transcription);
         setCurrentStep('analyzing');
 
@@ -94,10 +95,15 @@ const DreamRecorder: React.FC = () => {
         const emotionResponse = await dreamService.analyzeEmotion(transcriptionResponse.data.transcription);
         
         if (emotionResponse.success) {
+          console.log('🎭 Émotion reçue:', emotionResponse.data.emotion);
           setEmotion(emotionResponse.data.emotion);
           setCurrentStep('generating');
 
           // Génération d'image
+          console.log('🎨 Génération d\'image avec:', {
+            prompt: transcriptionResponse.data.transcription,
+            emotion: emotionResponse.data.emotion
+          });
           const imageResponse = await dreamService.generateImage(transcriptionResponse.data.transcription, emotionResponse.data.emotion);
           
           if (imageResponse.success) {

@@ -1,69 +1,156 @@
 import { ApiResponse } from '../types';
 
-// Configuration de l'API Hugging Face pour la génération d'images
+// Configuration de l'API Stability AI pour la génération d'images (GRATUIT)
+const STABILITY_CONFIG = {
+  ENABLED: process.env.REACT_APP_STABILITY_ENABLED === 'true',
+  API_KEY: process.env.REACT_APP_STABILITY_API_KEY || '',
+  URL: 'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image',
+  TIMEOUT: 30000 // Réduire à 30 secondes
+};
+
+// Configuration de fallback Hugging Face
 const HUGGING_FACE_CONFIG = {
   ENABLED: process.env.REACT_APP_HUGGING_FACE_ENABLED === 'true',
-  API_KEY: process.env.REACT_APP_HUGGING_FACE_TOKEN || '',
-  MODEL: 'stabilityai/stable-diffusion-2-1', // Modèle Stable Diffusion
-  URL: 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1',
+  API_KEY: process.env.REACT_APP_HUGGING_FACE_API_KEY || '',
   TIMEOUT: parseInt(process.env.REACT_APP_IMAGE_TIMEOUT || '30000')
 };
 
-// Modèles alternatifs disponibles
-const ALTERNATIVE_MODELS = [
+// Modèles Hugging Face qui fonctionnent vraiment
+const WORKING_MODELS = [
+  'stabilityai/stable-diffusion-2-1',
   'runwayml/stable-diffusion-v1-5',
   'CompVis/stable-diffusion-v1-4',
   'prompthero/openjourney',
   'dreamlike-art/dreamlike-diffusion-1.0'
 ];
 
-class ImageService {
-  private async generateWithHuggingFace(prompt: string, emotion: string): Promise<ApiResponse> {
-    try {
-      console.log('🎨 Génération d\'image avec Hugging Face...');
-      console.log('📝 Prompt:', prompt);
-      console.log('🎭 Émotion:', emotion);
+// Modèles alternatifs disponibles (modèles qui fonctionnent)
+const ALTERNATIVE_MODELS = [
+  'stabilityai/stable-diffusion-2',
+  'stabilityai/stable-diffusion-2-1-base',
+  'runwayml/stable-diffusion-v1-5',
+  'CompVis/stable-diffusion-v1-4'
+];
 
+class ImageService {
+  private async generateWithStability(prompt: string, emotion: string): Promise<ApiResponse> {
+    try {
+      console.log('🎨 Génération d\'image avec Stability AI (GRATUIT)...');
+      
       // Améliorer le prompt avec l'émotion
       const enhancedPrompt = this.enhancePromptWithEmotion(prompt, emotion);
       console.log('✨ Prompt amélioré:', enhancedPrompt);
 
-      const response = await fetch(HUGGING_FACE_CONFIG.URL, {
+      const response = await fetch(STABILITY_CONFIG.URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HUGGING_FACE_CONFIG.API_KEY}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${STABILITY_CONFIG.API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify({
-          inputs: enhancedPrompt,
-          parameters: {
-            num_inference_steps: 30,
-            guidance_scale: 7.5,
-            width: 512,
-            height: 512
-          }
+          text_prompts: [
+            {
+              text: enhancedPrompt,
+              weight: 1
+            }
+          ],
+          cfg_scale: 7,
+          height: 1024,
+          width: 1024,
+          samples: 1,
+          steps: 30
         }),
-        signal: AbortSignal.timeout(HUGGING_FACE_CONFIG.TIMEOUT)
+        signal: AbortSignal.timeout(STABILITY_CONFIG.TIMEOUT)
       });
 
       if (!response.ok) {
-        throw new Error(`Erreur API Hugging Face: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Erreur API Stability AI:', response.status, errorText);
+        throw new Error(`Erreur API Stability AI: ${response.status} - ${errorText}`);
       }
 
-      // Hugging Face retourne directement l'image en base64
-      const imageBlob = await response.blob();
-      const imageUrl = URL.createObjectURL(imageBlob);
+      const result = await response.json();
+      console.log('📊 Résultat Stability AI:', result);
 
-      console.log('✅ Image générée avec succès');
-      return {
-        success: true,
-        data: { imageUrl }
-      };
+      if (result.artifacts && result.artifacts[0]) {
+        // Stability AI retourne l'image en base64
+        const imageData = result.artifacts[0].base64;
+        const imageBlob = new Blob([Uint8Array.from(atob(imageData), c => c.charCodeAt(0))], { type: 'image/png' });
+        const imageUrl = URL.createObjectURL(imageBlob);
+
+        console.log('✅ Image générée avec succès par Stability AI');
+        return {
+          success: true,
+          data: { imageUrl }
+        };
+      } else {
+        throw new Error('Aucune image générée par Stability AI');
+      }
 
     } catch (error) {
-      console.error('❌ Erreur Hugging Face:', error);
+      console.error('❌ Erreur Stability AI:', error);
       throw error;
     }
+  }
+
+  private async generateWithHuggingFace(prompt: string, emotion: string): Promise<ApiResponse> {
+    // Liste des modèles à essayer dans l'ordre (modèles qui fonctionnent vraiment)
+    const models = [
+      'stabilityai/stable-diffusion-2-1',
+      'runwayml/stable-diffusion-v1-5',
+      'CompVis/stable-diffusion-v1-4',
+      'prompthero/openjourney',
+      'dreamlike-art/dreamlike-diffusion-1.0'
+    ];
+
+    for (const model of models) {
+      try {
+        console.log(`🎨 Tentative avec le modèle Hugging Face: ${model}`);
+        
+        // Améliorer le prompt avec l'émotion
+        const enhancedPrompt = this.enhancePromptWithEmotion(prompt, emotion);
+        console.log('✨ Prompt amélioré:', enhancedPrompt);
+
+        const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${HUGGING_FACE_CONFIG.API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            inputs: enhancedPrompt,
+            parameters: {
+              num_inference_steps: 30,
+              guidance_scale: 7.5,
+              width: 512,
+              height: 512
+            }
+          }),
+          signal: AbortSignal.timeout(HUGGING_FACE_CONFIG.TIMEOUT)
+        });
+
+        if (response.ok) {
+          // Hugging Face retourne directement l'image en base64
+          const imageBlob = await response.blob();
+          const imageUrl = URL.createObjectURL(imageBlob);
+
+          console.log(`✅ Image générée avec succès avec le modèle: ${model}`);
+          return {
+            success: true,
+            data: { imageUrl }
+          };
+        } else {
+          console.log(`❌ Modèle ${model} non disponible (${response.status}), essai du suivant...`);
+        }
+      } catch (error) {
+        console.log(`❌ Erreur avec le modèle ${model}:`, error);
+        // Continuer avec le modèle suivant
+      }
+    }
+
+    // Si aucun modèle ne fonctionne
+    throw new Error('Aucun modèle Hugging Face disponible');
   }
 
   private enhancePromptWithEmotion(prompt: string, emotion: string): string {
@@ -114,22 +201,55 @@ class ImageService {
     console.log('📝 Prompt:', prompt);
     console.log('🎭 Émotion:', emotion);
 
+    // Vérifier si le prompt est vide et utiliser un prompt par défaut
+    if (!prompt || prompt.trim() === '') {
+      console.log('⚠️ Prompt vide, utilisation d\'un prompt par défaut');
+      const defaultPrompts = {
+        joyeux: 'Un jardin coloré avec des fleurs qui dansent sous le soleil',
+        stressant: 'Un couloir sombre avec des ombres menaçantes',
+        neutre: 'Un paysage urbain au coucher du soleil',
+        mystérieux: 'Une maison ancienne avec des secrets cachés',
+        paisible: 'Un lac calme reflétant les montagnes',
+        intense: 'Une explosion de couleurs et d\'énergie'
+      };
+      prompt = defaultPrompts[emotion as keyof typeof defaultPrompts] || 'Un rêve mystérieux et onirique';
+      console.log('✨ Nouveau prompt:', prompt);
+    }
+
+    // Logs de débogage pour la configuration
+    console.log('🔧 Configuration Stability AI:');
+    console.log('  - ENABLED:', STABILITY_CONFIG.ENABLED);
+    console.log('  - API_KEY exists:', !!STABILITY_CONFIG.API_KEY);
+    console.log('  - API_KEY length:', STABILITY_CONFIG.API_KEY.length);
+
     try {
       let result: ApiResponse;
 
-      // Utiliser Hugging Face si configuré
-      if (HUGGING_FACE_CONFIG.ENABLED && HUGGING_FACE_CONFIG.API_KEY) {
+      // Essayer Stability AI en premier
+      if (STABILITY_CONFIG.ENABLED && STABILITY_CONFIG.API_KEY) {
+        console.log('✅ Tentative avec Stability AI');
         try {
-          result = await this.generateWithHuggingFace(prompt, emotion);
+          result = await this.generateWithStability(prompt, emotion);
+          return result;
         } catch (error) {
-          console.error('❌ Erreur Hugging Face, fallback vers mock:', error);
-          result = await this.generateWithMock(prompt, emotion);
+          console.error('❌ Erreur Stability AI, fallback vers Hugging Face:', error);
         }
-      } else {
-        // Utiliser la génération simulée
-        result = await this.generateWithMock(prompt, emotion);
       }
 
+      // Essayer Hugging Face en fallback
+      if (HUGGING_FACE_CONFIG.ENABLED && HUGGING_FACE_CONFIG.API_KEY) {
+        console.log('✅ Tentative avec Hugging Face');
+        try {
+          result = await this.generateWithHuggingFace(prompt, emotion);
+          return result;
+        } catch (error) {
+          console.error('❌ Erreur Hugging Face, fallback vers mock:', error);
+        }
+      }
+
+      // Utiliser le mock en dernier recours
+      console.log('❌ Aucune API configurée, utilisation du mock');
+      result = await this.generateWithMock(prompt, emotion);
       return result;
 
     } catch (error) {
@@ -143,29 +263,39 @@ class ImageService {
 
   // Vérifier la disponibilité de l'API
   async checkAvailability(): Promise<boolean> {
-    if (!HUGGING_FACE_CONFIG.ENABLED || !HUGGING_FACE_CONFIG.API_KEY) {
-      console.log('❌ Hugging Face non configuré');
+    if (!STABILITY_CONFIG.ENABLED || !STABILITY_CONFIG.API_KEY) {
+      console.log('❌ Stability AI non configuré');
       return false;
     }
 
     try {
-      const response = await fetch(HUGGING_FACE_CONFIG.URL, {
+      const response = await fetch(STABILITY_CONFIG.URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HUGGING_FACE_CONFIG.API_KEY}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${STABILITY_CONFIG.API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify({
-          inputs: 'test image generation'
+          text_prompts: [{ text: 'a simple test image', weight: 1 }],
+          cfg_scale: 7,
+          height: 512,
+          width: 512,
+          samples: 1,
+          steps: 10
         }),
         signal: AbortSignal.timeout(5000)
       });
 
       const isAvailable = response.ok;
-      console.log('✅ Hugging Face disponible:', isAvailable);
+      if (!isAvailable) {
+        const errorText = await response.text();
+        console.error('❌ Erreur test Stability AI:', response.status, errorText);
+      }
+      console.log('✅ Stability AI disponible:', isAvailable);
       return isAvailable;
     } catch (error) {
-      console.error('❌ API Hugging Face non disponible:', error);
+      console.error('❌ API Stability AI non disponible:', error);
       return false;
     }
   }
