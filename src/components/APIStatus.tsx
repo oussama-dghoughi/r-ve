@@ -21,10 +21,12 @@ import {
   Zap,
   Globe,
   Settings,
-  Heart
+  Heart,
+  Image
 } from 'lucide-react';
 import dreamService from '../services/dreamService';
 import emotionService from '../services/emotionService';
+import imageService from '../services/imageService';
 
 interface APIStatusData {
   assemblyAI: boolean;
@@ -34,6 +36,8 @@ interface APIStatusData {
   azure: boolean;
   mock: boolean;
   emotionAPI: boolean;
+  mistralAI: boolean;
+  huggingFaceImage: boolean;
 }
 
 const APIStatus: React.FC = () => {
@@ -45,10 +49,13 @@ const APIStatus: React.FC = () => {
       try {
         const transcriptionStatus = await dreamService.checkTranscriptionAPIs();
         const emotionStatus = await emotionService.checkAvailability();
+        const imageStatus = await imageService.checkAvailability();
         
         setApiStatus({
           ...transcriptionStatus,
-          emotionAPI: emotionStatus
+          emotionAPI: emotionStatus,
+          mistralAI: emotionStatus,
+          huggingFaceImage: imageStatus
         });
       } catch (error) {
         console.error('Erreur lors de la vérification des APIs:', error);
@@ -60,7 +67,9 @@ const APIStatus: React.FC = () => {
           google: false,
           azure: false,
           mock: true,
-          emotionAPI: false
+          emotionAPI: false,
+          mistralAI: false,
+          huggingFaceImage: false
         });
       }
     };
@@ -225,6 +234,44 @@ const APIStatus: React.FC = () => {
                 color={getStatusColor(apiStatus.emotionAPI) as any}
                 size="small"
                 icon={<Heart size={12} />}
+              />
+            </Box>
+
+            {/* Mistral AI Emotion API */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {getStatusIcon(apiStatus.mistralAI)}
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Mistral AI Emotion API
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Analyse d'émotion intelligente avec IA (payant)
+                </Typography>
+              </Box>
+              <Chip
+                label={apiStatus.mistralAI ? 'Disponible' : 'Non configuré'}
+                color={getStatusColor(apiStatus.mistralAI) as any}
+                size="small"
+                icon={<Brain size={12} />}
+              />
+            </Box>
+
+            {/* Hugging Face Image Generation */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              {getStatusIcon(apiStatus.huggingFaceImage)}
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Hugging Face Image Generation
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Génération d'images avec Stable Diffusion (gratuit)
+                </Typography>
+              </Box>
+              <Chip
+                label={apiStatus.huggingFaceImage ? 'Disponible' : 'Non configuré'}
+                color={getStatusColor(apiStatus.huggingFaceImage) as any}
+                size="small"
+                icon={<Image size={12} />}
               />
             </Box>
 

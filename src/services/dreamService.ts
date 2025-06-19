@@ -1,5 +1,7 @@
 import { Dream, Emotion, ApiResponse } from '../types';
 import transcriptionService from './transcriptionService';
+import emotionService from './emotionService';
+import imageService from './imageService';
 
 // Mock data pour la démo
 const mockTranscriptions = [
@@ -73,24 +75,7 @@ class DreamService {
 
   // Simuler la génération d'image
   async generateImage(prompt: string, emotion: Emotion): Promise<ApiResponse> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Utiliser des images placeholder basées sur l'émotion
-        const imageUrls = {
-          joyeux: 'https://picsum.photos/400/300?random=1',
-          stressant: 'https://picsum.photos/400/300?random=2',
-          neutre: 'https://picsum.photos/400/300?random=3',
-          mystérieux: 'https://picsum.photos/400/300?random=4',
-          paisible: 'https://picsum.photos/400/300?random=5',
-          intense: 'https://picsum.photos/400/300?random=6'
-        };
-        
-        resolve({
-          success: true,
-          data: { imageUrl: imageUrls[emotion] }
-        });
-      }, 3000);
-    });
+    return await imageService.generateImage(prompt, emotion);
   }
 
   // Sauvegarder un rêve

@@ -1,27 +1,34 @@
 import { Emotion, ApiResponse } from '../types';
 
-// Configuration de l'API AssemblyAI pour l'analyse d'émotion
-const ASSEMBLY_AI_CONFIG = {
-  ENABLED: true, // Forcer l'activation
-  TOKEN: '585cf224714c4bb4972be9a25b7b0c9b', // Clé API directe
-  URL: 'https://api.assemblyai.com/v2/transcript',
+// Configuration de l'API Mistral AI pour l'analyse d'émotion
+const MISTRAL_CONFIG = {
+  ENABLED: process.env.REACT_APP_MISTRAL_ENABLED === 'true',
+  API_KEY: process.env.REACT_APP_MISTRAL_API_KEY || '',
+  MODEL: 'mistral-large-latest',
+  URL: 'https://api.mistral.ai/v1/chat/completions',
   TIMEOUT: parseInt(process.env.REACT_APP_EMOTION_TIMEOUT || '15000')
 };
 
-// Mapping des émotions détectées par AssemblyAI vers nos émotions
-const assemblyToEmotion: { [key: string]: Emotion } = {
-  'happy': 'joyeux',
-  'excited': 'joyeux',
+// Mapping des émotions détectées par Mistral vers nos émotions
+const mistralToEmotion: { [key: string]: Emotion } = {
+  'joyeux': 'joyeux',
+  'heureux': 'joyeux',
   'joyful': 'joyeux',
-  'sad': 'stressant',
-  'angry': 'stressant',
-  'fearful': 'stressant',
+  'happy': 'joyeux',
+  'stressant': 'stressant',
+  'stressé': 'stressant',
+  'stressful': 'stressant',
+  'anxieux': 'stressant',
   'anxious': 'stressant',
+  'neutre': 'neutre',
   'neutral': 'neutre',
-  'calm': 'paisible',
+  'paisible': 'paisible',
+  'calme': 'paisible',
   'peaceful': 'paisible',
+  'mystérieux': 'mystérieux',
   'mysterious': 'mystérieux',
   'intense': 'intense',
+  'passionné': 'intense',
   'passionate': 'intense'
 };
 
@@ -33,62 +40,83 @@ const emotionKeywords = {
 };
 
 class EmotionService {
-  private async analyzeWithAssemblyAI(text: string): Promise<Emotion> {
+  private async analyzeWithMistral(text: string): Promise<Emotion> {
     try {
-      console.log('🧠 Analyse d\'émotion avec AssemblyAI...');
+      console.log('🧠 Analyse d\'émotion avec Mistral AI...');
       
-      // AssemblyAI nécessite un fichier audio, donc on utilise l'analyse de sentiment
-      // Pour le texte, on utilise leur endpoint de sentiment analysis
-      const response = await fetch('https://api.assemblyai.com/v2/sentiment', {
+      const prompt = `Analyse l'émotion dominante dans ce rêve décrit en français. 
+      
+Rêve: "${text}"
+
+Réponds UNIQUEMENT avec l'une de ces émotions (en français):
+- joyeux (pour les rêves positifs, heureux, colorés, amusants)
+- stressant (pour les rêves angoissants, effrayants, négatifs)
+- neutre (pour les rêves sans émotion particulière)
+- paisible (pour les rêves calmes, sereins, apaisants)
+- mystérieux (pour les rêves étranges, énigmatiques, mystérieux)
+- intense (pour les rêves passionnés, dramatiques, puissants)
+
+Émotion détectée:`;
+
+      const response = await fetch(MISTRAL_CONFIG.URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${ASSEMBLY_AI_CONFIG.TOKEN}`,
+          'Authorization': `Bearer ${MISTRAL_CONFIG.API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          text: text,
-          language_code: 'fr'
+          model: MISTRAL_CONFIG.MODEL,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 50,
+          temperature: 0.3
         }),
-        signal: AbortSignal.timeout(ASSEMBLY_AI_CONFIG.TIMEOUT)
+        signal: AbortSignal.timeout(MISTRAL_CONFIG.TIMEOUT)
       });
 
       if (!response.ok) {
-        throw new Error(`Erreur API AssemblyAI: ${response.status}`);
+        throw new Error(`Erreur API Mistral: ${response.status}`);
       }
 
       const result = await response.json();
-      console.log('📊 Résultat AssemblyAI:', result);
+      console.log('📊 Résultat Mistral:', result);
 
-      // Extraire le sentiment principal
+      // Extraire l'émotion de la réponse
       let emotion: Emotion = 'neutre';
       
-      if (result.sentiment) {
-        const sentiment = result.sentiment.toLowerCase();
-        
-        // Mapping basique du sentiment
-        if (sentiment === 'positive' || sentiment === 'positif') {
-          emotion = 'joyeux';
-        } else if (sentiment === 'negative' || sentiment === 'négatif') {
-          emotion = 'stressant';
-        } else {
-          emotion = 'neutre';
+      if (result.choices && result.choices[0] && result.choices[0].message) {
+        const responseText = result.choices[0].message.content.toLowerCase().trim();
+        console.log('🎭 Réponse Mistral:', responseText);
+
+        // Chercher l'émotion dans la réponse
+        for (const [emotionKey, emotionValue] of Object.entries(mistralToEmotion)) {
+          if (responseText.includes(emotionKey.toLowerCase())) {
+            emotion = emotionValue;
+            break;
+          }
         }
       }
 
-      // Affiner avec les mots-clés
-      const textLower = text.toLowerCase();
-      for (const [emotionType, keywords] of Object.entries(emotionKeywords)) {
-        if (keywords.some(keyword => textLower.includes(keyword))) {
-          emotion = emotionType as Emotion;
-          break;
+      // Fallback avec analyse de mots-clés si Mistral n'a pas donné de réponse claire
+      if (emotion === 'neutre') {
+        const textLower = text.toLowerCase();
+        for (const [emotionType, keywords] of Object.entries(emotionKeywords)) {
+          if (keywords.some(keyword => textLower.includes(keyword))) {
+            emotion = emotionType as Emotion;
+            break;
+          }
         }
       }
 
-      console.log('🎭 Émotion détectée par AssemblyAI:', emotion);
+      console.log('🎭 Émotion détectée par Mistral:', emotion);
       return emotion;
 
     } catch (error) {
-      console.error('❌ Erreur AssemblyAI:', error);
+      console.error('❌ Erreur Mistral:', error);
       throw error;
     }
   }
@@ -132,12 +160,12 @@ class EmotionService {
     try {
       let emotion: Emotion;
 
-      // Utiliser AssemblyAI si configuré
-      if (ASSEMBLY_AI_CONFIG.ENABLED && ASSEMBLY_AI_CONFIG.TOKEN) {
+      // Utiliser Mistral AI si configuré
+      if (MISTRAL_CONFIG.ENABLED && MISTRAL_CONFIG.API_KEY) {
         try {
-          emotion = await this.analyzeWithAssemblyAI(text);
+          emotion = await this.analyzeWithMistral(text);
         } catch (error) {
-          console.error('❌ Erreur AssemblyAI, fallback vers mock:', error);
+          console.error('❌ Erreur Mistral, fallback vers mock:', error);
           emotion = await this.analyzeWithMock(text);
         }
       } else {
@@ -161,27 +189,36 @@ class EmotionService {
 
   // Vérifier la disponibilité de l'API
   async checkAvailability(): Promise<boolean> {
-    if (!ASSEMBLY_AI_CONFIG.ENABLED || !ASSEMBLY_AI_CONFIG.TOKEN) {
+    if (!MISTRAL_CONFIG.ENABLED || !MISTRAL_CONFIG.API_KEY) {
+      console.log('❌ Mistral AI non configuré');
       return false;
     }
 
     try {
-      const response = await fetch('https://api.assemblyai.com/v2/sentiment', {
+      const response = await fetch(MISTRAL_CONFIG.URL, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${ASSEMBLY_AI_CONFIG.TOKEN}`,
+          'Authorization': `Bearer ${MISTRAL_CONFIG.API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          text: 'test',
-          language_code: 'fr'
+          model: MISTRAL_CONFIG.MODEL,
+          messages: [
+            {
+              role: 'user',
+              content: 'Test de connexion'
+            }
+          ],
+          max_tokens: 10
         }),
         signal: AbortSignal.timeout(5000)
       });
 
-      return response.ok;
+      const isAvailable = response.ok;
+      console.log('✅ Mistral AI disponible:', isAvailable);
+      return isAvailable;
     } catch (error) {
-      console.error('❌ API AssemblyAI non disponible:', error);
+      console.error('❌ API Mistral non disponible:', error);
       return false;
     }
   }
